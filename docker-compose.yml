@@ -1,0 +1,87 @@
+# Pizza Pizza Eyes — stack para Hostinger Docker Manager / VPS
+# URL típica no painel:
+#   https://raw.githubusercontent.com/SEU_USER/ppf-eyes/main/docker-compose.yml
+#
+# Defina as variáveis de ambiente no painel Hostinger (ou arquivo .env na VPS).
+# Nunca commite senhas reais.
+
+name: pizza-pizza-eyes
+
+services:
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ppf_eyes}
+      MYSQL_USER: ${MYSQL_USER:-ppf_eyes}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-PpEyes_Db_ChangeMe}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-PpEyes_Root_ChangeMe}
+    volumes:
+      - ppf_eyes_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - ppf
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /app/data
+      MYSQL_HOST: db
+      MYSQL_PORT: "3306"
+      MYSQL_USER: ${MYSQL_USER:-ppf_eyes}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-PpEyes_Db_ChangeMe}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ppf_eyes}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-change-me-to-a-long-random-string-ppf-eyes-32}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://127.0.0.1}
+      DEFAULT_AI_PROVIDER: ${DEFAULT_AI_PROVIDER:-claude}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-ppf_eyes_session}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
+      AUTH_MAX_FAILED_ATTEMPTS: ${AUTH_MAX_FAILED_ATTEMPTS:-5}
+      AUTH_LOCKOUT_MINUTES: ${AUTH_LOCKOUT_MINUTES:-15}
+      SNAPSHOT_RETENTION_HOURS: ${SNAPSHOT_RETENTION_HOURS:-24}
+    volumes:
+      - ppf_eyes_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ppf
+    # API só na rede interna; o nginx (web) faz proxy
+    expose:
+      - "8090"
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      - api
+    networks:
+      - ppf
+
+volumes:
+  ppf_eyes_mysql:
+  ppf_eyes_data:
+
+networks:
+  ppf:
+    driver: bridge
