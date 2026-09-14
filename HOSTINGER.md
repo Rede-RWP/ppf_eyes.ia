@@ -4,7 +4,7 @@ Painel: **VPS → srv… → Gerenciador Docker → Compose → Implantar**
 
 ## 1) Publicar o código no GitHub
 
-Repo já criado: **https://github.com/NogueiraTNT/ppf-eyes** (privado).
+Repo: **https://github.com/Rede-RWP/ppf_eyes.ia**
 
 Para atualizar depois de mudanças locais:
 
@@ -19,13 +19,13 @@ git add -A && git commit -m "update" && git push
 ## 2) URL para colar no Hostinger
 
 ```text
-https://raw.githubusercontent.com/NogueiraTNT/ppf-eyes/main/docker-compose.yml
+https://raw.githubusercontent.com/Rede-RWP/ppf_eyes.ia/main/docker-compose.yml
 ```
 
 Ou:
 
 ```text
-https://github.com/NogueiraTNT/ppf-eyes/blob/main/docker-compose.yml
+https://github.com/Rede-RWP/ppf_eyes.ia/blob/main/docker-compose.yml
 ```
 
 **Nome do projeto:** `pizza-pizza-eyes`
