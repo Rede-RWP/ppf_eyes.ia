@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import User
+from app.permissions import accessible_store_ids, user_role
 from app.schemas import TokenOut, UserOut
 from app.security import (
     _client_ip,
@@ -97,5 +98,13 @@ def logout_all(
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
-    return user
+def me(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    ids = accessible_store_ids(db, user)
+    return UserOut(
+        id=user.id,
+        username=user.username,
+        role=user_role(user),
+        display_name=user.display_name,
+        store_ids=sorted(ids) if ids is not None else [],
+        is_active=bool(user.is_active),
+    )

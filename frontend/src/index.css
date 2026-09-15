@@ -653,6 +653,238 @@ button:disabled {
   gap: 0.4rem;
 }
 
+/* ——— Store hours editor ——— */
+.hours-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel-2) 80%, transparent);
+}
+
+.hours-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  align-items: flex-start;
+}
+
+.hours-block-title {
+  margin: 0 0 0.2rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--text);
+}
+
+.hours-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.hours-block-actions .ghost {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.65rem;
+  min-height: 0;
+}
+
+.hours-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.hours-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) 1fr;
+  gap: 0.75rem 1rem;
+  align-items: center;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  transition: border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.hours-row.is-closed {
+  opacity: 0.72;
+}
+
+.hours-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  padding: 0;
+  min-height: 0;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.hours-toggle:hover {
+  background: transparent;
+  box-shadow: none;
+}
+
+.hours-toggle-knob {
+  width: 2.4rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 35%, var(--bg));
+  border: 1px solid var(--line);
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.hours-toggle-knob::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.hours-toggle.is-on .hours-toggle-knob {
+  background: color-mix(in srgb, var(--accent) 75%, #000);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+}
+
+.hours-toggle.is-on .hours-toggle-knob::after {
+  transform: translateX(1rem);
+}
+
+.hours-day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  line-height: 1.2;
+}
+
+.hours-day strong {
+  font-size: 0.92rem;
+}
+
+.hours-day small {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.hours-times {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.55rem 0.75rem;
+}
+
+.hours-times label {
+  flex: 1 1 110px;
+  max-width: 150px;
+  min-width: 0;
+}
+
+.hours-times input[type='time'] {
+  font-variant-numeric: tabular-nums;
+  color-scheme: dark;
+}
+
+.hours-sep {
+  color: var(--muted);
+  padding-bottom: 0.7rem;
+  font-size: 0.9rem;
+}
+
+.hours-closed-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+/* ——— User store picker ——— */
+.store-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel-2) 80%, transparent);
+}
+
+.store-pick-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.store-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.65rem;
+}
+
+.store-pick-item {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 400;
+  min-height: var(--touch);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.store-pick-item.is-on {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent-dim) 80%, var(--bg-2));
+}
+
+.store-pick-item input {
+  width: 1.05rem;
+  height: 1.05rem;
+  min-height: 0;
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+.store-pick-item span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.store-pick-item strong {
+  font-size: 0.92rem;
+}
+
+.store-pick-item small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -986,6 +1218,18 @@ button:disabled {
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .hours-row {
+    grid-template-columns: 1fr;
+  }
+
+  .hours-times {
+    width: 100%;
+  }
+
+  .hours-times label {
+    max-width: none;
   }
 
   .table {

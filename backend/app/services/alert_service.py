@@ -16,11 +16,14 @@ def camera_to_out(camera: Camera) -> dict:
     from app.security import mask_rtsp
 
     profile = getattr(camera, "profile", None)
+    store = getattr(camera, "store", None)
     return {
         "id": camera.id,
         "name": camera.name,
         "rtsp_url_masked": mask_rtsp(camera.rtsp_url),
         "location": camera.location,
+        "store_id": camera.store_id,
+        "store_name": store.name if store else None,
         "profile_id": camera.profile_id,
         "profile_name": profile.name if profile else None,
         "enabled": camera.enabled,
@@ -108,34 +111,50 @@ def _in_cooldown(
     return False
 
 
-def process_camera(db: Session, camera: Camera, settings_row: AppSettings) -> None:
-    ok, message, jpeg = capture_frame(camera.rtsp_url)
+def process_camera(
+    db: Session,
+    camera: Camera,
+    settings_row: AppSettings,
+    *,
+    jpeg: Optional[bytes] = None,
+    run_ai: bool = True,
+) -> None:
+    """Captura (opcional) + atualiza status. Se run_ai=True, chama a visão."""
     now = datetime.utcnow()
-    if not ok or not jpeg:
-        camera.status = "offline"
-        camera.last_error = message
-        camera.updated_at = now
-        db.add(
-            AnalysisLog(
-                camera_id=camera.id,
-                provider=settings_row.active_provider,
-                success=False,
-                message=message,
+    if jpeg is None:
+        ok, message, jpeg = capture_frame(camera.rtsp_url)
+        if not ok or not jpeg:
+            camera.status = "offline"
+            camera.last_error = message
+            camera.updated_at = now
+            db.add(
+                AnalysisLog(
+                    camera_id=camera.id,
+                    provider=settings_row.active_provider,
+                    success=False,
+                    message=message,
+                )
             )
-        )
-        db.commit()
-        return
+            db.commit()
+            return
 
     frame_name = f"cam_{camera.id}_{int(now.timestamp())}.jpg"
     relative = save_jpeg(jpeg, frame_name)
     camera.last_frame_path = relative
     camera.status = "online"
     camera.last_seen_at = now
-    camera.last_error = None
     camera.updated_at = now
 
+    if not run_ai:
+        # Mantém preview/status sem gastar IA
+        if camera.last_error and camera.last_error.startswith("IA ("):
+            camera.last_error = None
+        db.commit()
+        return
+
+    camera.last_error = None
+
     try:
-        # Reload relationship if needed
         profile = camera.profile
         if camera.profile_id and profile is None:
             from app.models import MonitorProfile
@@ -158,7 +177,6 @@ def process_camera(db: Session, camera: Camera, settings_row: AppSettings) -> No
         )
     except Exception as exc:  # noqa: BLE001
         err = str(exc)
-        # Keep message short and explicit that stream is fine
         if "not_found_error" in err or "model:" in err:
             camera.last_error = (
                 f"Modelo IA inválido ({settings_row.active_provider}). "

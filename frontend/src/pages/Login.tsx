@@ -2,10 +2,12 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../api'
+import { useAuth } from '../auth'
 import BrandMark from '../components/BrandMark'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const { refresh } = useAuth()
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('admin123')
   const [error, setError] = useState('')
@@ -17,6 +19,7 @@ export default function LoginPage() {
     setError('')
     try {
       await login(username, password)
+      await refresh()
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha no login')

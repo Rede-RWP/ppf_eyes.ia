@@ -24,10 +24,70 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # admin | gestor | operador
+    role: Mapped[str] = mapped_column(String(32), default="admin", nullable=False)
+    display_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     sessions: Mapped[list["AuthSession"]] = relationship(back_populates="user")
+    store_links: Mapped[list["StoreUser"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class Store(Base):
+    """Loja física (franquia / unidade)."""
+
+    __tablename__ = "stores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    cnpj: Mapped[Optional[str]] = mapped_column(String(18), nullable=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    hours: Mapped[list["StoreHour"]] = relationship(
+        back_populates="store", cascade="all, delete-orphan", order_by="StoreHour.weekday"
+    )
+    user_links: Mapped[list["StoreUser"]] = relationship(
+        back_populates="store", cascade="all, delete-orphan"
+    )
+    cameras: Mapped[list["Camera"]] = relationship(back_populates="store")
+
+
+class StoreHour(Base):
+    """Horário de funcionamento por dia (0=segunda … 6=domingo)."""
+
+    __tablename__ = "store_hours"
+    __table_args__ = (UniqueConstraint("store_id", "weekday", name="uq_store_weekday"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id"), nullable=False, index=True)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)  # 0=seg … 6=dom
+    opens_at: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)  # HH:MM
+    closes_at: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    store: Mapped["Store"] = relationship(back_populates="hours")
+
+
+class StoreUser(Base):
+    """Lojas às quais o usuário tem acesso (gestor / operador)."""
+
+    __tablename__ = "store_users"
+    __table_args__ = (UniqueConstraint("user_id", "store_id", name="uq_user_store"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="store_links")
+    store: Mapped["Store"] = relationship(back_populates="user_links")
 
 
 class AuthSession(Base):
@@ -72,6 +132,14 @@ class AppSettings(Base):
     analysis_interval_sec: Mapped[int] = mapped_column(Integer, default=30)
     cooldown_minutes: Mapped[int] = mapped_column(Integer, default=5)
     confidence_threshold: Mapped[float] = mapped_column(Float, default=0.6)
+    # Monitoramento inteligente
+    respect_store_hours: Mapped[bool] = mapped_column(Boolean, default=True)
+    motion_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    motion_check_interval_sec: Mapped[int] = mapped_column(Integer, default=8)
+    motion_sensitivity: Mapped[float] = mapped_column(Float, default=0.02)
+    motion_pixel_threshold: Mapped[int] = mapped_column(Integer, default=25)
+    motion_cooldown_sec: Mapped[int] = mapped_column(Integer, default=45)
+    ai_heartbeat_sec: Mapped[int] = mapped_column(Integer, default=300)
     # Global defaults (used when camera has no profile)
     rule_sem_touca: Mapped[bool] = mapped_column(Boolean, default=True)
     rule_fardamento: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -123,6 +191,9 @@ class Camera(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     rtsp_url: Mapped[str] = mapped_column(Text, nullable=False)
     location: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    store_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("stores.id"), nullable=True, index=True
+    )
     profile_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("monitor_profiles.id"), nullable=True
     )
@@ -137,6 +208,7 @@ class Camera(Base):
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
+    store: Mapped[Optional["Store"]] = relationship(back_populates="cameras")
     profile: Mapped[Optional["MonitorProfile"]] = relationship(back_populates="cameras")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="camera")
 

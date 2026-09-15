@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Camera, MonitorProfile, User
 from app.schemas import ProfileCreate, ProfileOut, ProfileUpdate
-from app.security import get_current_user
+from app.permissions import require_roles
 from app.services.ai_common import slugify
 from app.services.profiles_seed import ensure_default_profiles
 
@@ -42,7 +42,7 @@ def _to_out(profile: MonitorProfile, cameras_count: int = 0) -> ProfileOut:
 @router.get("", response_model=List[ProfileOut])
 def list_profiles(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor")),
 ):
     ensure_default_profiles(db)
     profiles = db.query(MonitorProfile).order_by(MonitorProfile.name.asc()).all()
@@ -57,7 +57,7 @@ def list_profiles(
 def create_profile(
     payload: ProfileCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin")),
 ):
     ensure_default_profiles(db)
     slug = slugify(payload.name)
@@ -93,7 +93,7 @@ def update_profile(
     profile_id: int,
     payload: ProfileUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin")),
 ):
     profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
     if not profile:
@@ -126,7 +126,7 @@ def update_profile(
 def delete_profile(
     profile_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin")),
 ):
     profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
     if not profile:

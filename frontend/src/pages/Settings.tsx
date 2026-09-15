@@ -38,6 +38,13 @@ export default function SettingsPage() {
         analysis_interval_sec: Number(settings.analysis_interval_sec),
         cooldown_minutes: Number(settings.cooldown_minutes),
         confidence_threshold: Number(settings.confidence_threshold),
+        respect_store_hours: !!settings.respect_store_hours,
+        motion_enabled: settings.motion_enabled !== false,
+        motion_check_interval_sec: Number(settings.motion_check_interval_sec ?? 8),
+        motion_sensitivity: Number(settings.motion_sensitivity ?? 0.02),
+        motion_pixel_threshold: Number(settings.motion_pixel_threshold ?? 25),
+        motion_cooldown_sec: Number(settings.motion_cooldown_sec ?? 45),
+        ai_heartbeat_sec: Number(settings.ai_heartbeat_sec ?? 300),
         rule_sem_touca: settings.rule_sem_touca,
         rule_fardamento: settings.rule_fardamento,
         rule_sem_epi: settings.rule_sem_epi,
@@ -279,6 +286,108 @@ export default function SettingsPage() {
                 value={settings.confidence_threshold}
                 onChange={(e) =>
                   setSettings({ ...settings, confidence_threshold: Number(e.target.value) })
+                }
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="panel-section">
+          <span className="section-label">Movimento e horário</span>
+          <p className="muted" style={{ margin: '0 0 0.75rem' }}>
+            A IA só analisa com a loja aberta e quando detecta movimento (economiza custo).
+          </p>
+          <div className="rules-grid" style={{ marginBottom: '0.85rem' }}>
+            <label className={`rule-card${settings.respect_store_hours !== false ? ' is-on' : ''}`}>
+              <div className="rule-card-top">
+                <input
+                  type="checkbox"
+                  checked={settings.respect_store_hours !== false}
+                  onChange={(e) =>
+                    setSettings({ ...settings, respect_store_hours: e.target.checked })
+                  }
+                />
+                <div className="rule-card-copy">
+                  <strong>Só no horário da loja</strong>
+                  <span>Usa o funcionamento cadastrado em Lojas</span>
+                </div>
+              </div>
+            </label>
+            <label className={`rule-card${settings.motion_enabled !== false ? ' is-on' : ''}`}>
+              <div className="rule-card-top">
+                <input
+                  type="checkbox"
+                  checked={settings.motion_enabled !== false}
+                  onChange={(e) =>
+                    setSettings({ ...settings, motion_enabled: e.target.checked })
+                  }
+                />
+                <div className="rule-card-copy">
+                  <strong>Só com movimento</strong>
+                  <span>Captura barata; IA só se houver movimento</span>
+                </div>
+              </div>
+            </label>
+          </div>
+          <div className="form-grid">
+            <label>
+              Checagem de movimento (seg)
+              <input
+                type="number"
+                min={3}
+                max={120}
+                value={settings.motion_check_interval_sec ?? 8}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    motion_check_interval_sec: Number(e.target.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Sensibilidade (0.01–0.1)
+              <input
+                type="number"
+                min={0.001}
+                max={0.2}
+                step={0.005}
+                value={settings.motion_sensitivity ?? 0.02}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    motion_sensitivity: Number(e.target.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Cooldown IA após movimento (seg)
+              <input
+                type="number"
+                min={5}
+                max={600}
+                value={settings.motion_cooldown_sec ?? 45}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    motion_cooldown_sec: Number(e.target.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Heartbeat IA sem movimento (seg, 0=off)
+              <input
+                type="number"
+                min={0}
+                max={3600}
+                value={settings.ai_heartbeat_sec ?? 300}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    ai_heartbeat_sec: Number(e.target.value),
+                  })
                 }
               />
             </label>

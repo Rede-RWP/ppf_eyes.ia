@@ -7,11 +7,12 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.api import alerts, auth, cameras, profiles, reports, settings as settings_api
+from app.api import alerts, auth, cameras, profiles, reports, settings as settings_api, stores, users
 from app.config import get_settings
 from app.db import Base, SessionLocal, engine
 from app.middleware_security import SecurityHeadersMiddleware
-from app.models import User
+from app.models import Store, StoreHour, User
+from app.permissions import ROLE_ADMIN, default_hours_payload
 from app.security import get_current_user, hash_password
 from app.services.alert_service import get_or_create_settings
 from app.services.profiles_seed import ensure_default_profiles
@@ -45,7 +46,6 @@ def _migrate_schema() -> None:
                 "ALTER TABLE alerts ADD COLUMN images_expire_at DATETIME NULL"
             )
             logger.info("Migrated alerts.images_expire_at")
-            # Backfill: criado + 24h (favoritos ficam sem expiração)
             if url.startswith("sqlite"):
                 conn.exec_driver_sql(
                     "UPDATE alerts SET images_expire_at = datetime(created_at, '+24 hours') "
@@ -60,61 +60,157 @@ def _migrate_schema() -> None:
                 "UPDATE alerts SET images_expire_at = NULL WHERE favorited = 1"
             )
 
-        if not url.startswith("sqlite"):
-            return
-
         user_cols = _column_names(conn, "users")
-        if user_cols and "is_active" not in user_cols:
+        if user_cols and "role" not in user_cols:
+            if url.startswith("sqlite"):
+                conn.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN role VARCHAR(32) DEFAULT 'admin'"
+                )
+            else:
+                conn.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN role VARCHAR(32) NOT NULL DEFAULT 'admin'"
+                )
+            conn.exec_driver_sql("UPDATE users SET role = 'admin' WHERE role IS NULL OR role = ''")
+            logger.info("Migrated users.role")
+        if user_cols and "display_name" not in user_cols:
             conn.exec_driver_sql(
-                "ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"
+                "ALTER TABLE users ADD COLUMN display_name VARCHAR(120) NULL"
             )
+            logger.info("Migrated users.display_name")
+        if user_cols and "is_active" not in user_cols:
+            if url.startswith("sqlite"):
+                conn.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"
+                )
+            else:
+                conn.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1"
+                )
             logger.info("Migrated users.is_active")
 
         cam_cols = _column_names(conn, "cameras")
-        if cam_cols and "profile_id" not in cam_cols:
-            conn.exec_driver_sql(
-                "ALTER TABLE cameras ADD COLUMN profile_id INTEGER REFERENCES monitor_profiles(id)"
-            )
-            logger.info("Migrated cameras.profile_id")
+        if cam_cols and "store_id" not in cam_cols:
+            if url.startswith("sqlite"):
+                conn.exec_driver_sql(
+                    "ALTER TABLE cameras ADD COLUMN store_id INTEGER REFERENCES stores(id)"
+                )
+            else:
+                conn.exec_driver_sql(
+                    "ALTER TABLE cameras ADD COLUMN store_id INT NULL"
+                )
+                try:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE cameras ADD INDEX ix_cameras_store_id (store_id)"
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            logger.info("Migrated cameras.store_id")
 
-        alert_cols = _column_names(conn, "alerts")
-        migrations = {
-            "feedback_comment": "ALTER TABLE alerts ADD COLUMN feedback_comment TEXT",
-            "favorited": "ALTER TABLE alerts ADD COLUMN favorited BOOLEAN DEFAULT 0",
-            "favorite_path": "ALTER TABLE alerts ADD COLUMN favorite_path VARCHAR(255)",
-            "favorited_at": "ALTER TABLE alerts ADD COLUMN favorited_at DATETIME",
+        settings_cols = _column_names(conn, "app_settings")
+        settings_migrations = {
+            "respect_store_hours": (
+                "ALTER TABLE app_settings ADD COLUMN respect_store_hours "
+                + ("BOOLEAN DEFAULT 1" if url.startswith("sqlite") else "TINYINT(1) NOT NULL DEFAULT 1")
+            ),
+            "motion_enabled": (
+                "ALTER TABLE app_settings ADD COLUMN motion_enabled "
+                + ("BOOLEAN DEFAULT 1" if url.startswith("sqlite") else "TINYINT(1) NOT NULL DEFAULT 1")
+            ),
+            "motion_check_interval_sec": (
+                "ALTER TABLE app_settings ADD COLUMN motion_check_interval_sec INTEGER DEFAULT 8"
+            ),
+            "motion_sensitivity": (
+                "ALTER TABLE app_settings ADD COLUMN motion_sensitivity FLOAT DEFAULT 0.02"
+            ),
+            "motion_pixel_threshold": (
+                "ALTER TABLE app_settings ADD COLUMN motion_pixel_threshold INTEGER DEFAULT 25"
+            ),
+            "motion_cooldown_sec": (
+                "ALTER TABLE app_settings ADD COLUMN motion_cooldown_sec INTEGER DEFAULT 45"
+            ),
+            "ai_heartbeat_sec": (
+                "ALTER TABLE app_settings ADD COLUMN ai_heartbeat_sec INTEGER DEFAULT 300"
+            ),
         }
-        for col, sql in migrations.items():
-            if alert_cols and col not in alert_cols:
+        for col, sql in settings_migrations.items():
+            if settings_cols and col not in settings_cols:
                 conn.exec_driver_sql(sql)
-                logger.info("Migrated alerts.%s", col)
+                logger.info("Migrated app_settings.%s", col)
 
-        profile_cols = _column_names(conn, "monitor_profiles")
-        profile_migrations = {
-            "rule_celular": "ALTER TABLE monitor_profiles ADD COLUMN rule_celular BOOLEAN DEFAULT 0",
-            "phone_max_minutes": "ALTER TABLE monitor_profiles ADD COLUMN phone_max_minutes INTEGER DEFAULT 5",
-            "rule_tempo_espera": "ALTER TABLE monitor_profiles ADD COLUMN rule_tempo_espera BOOLEAN DEFAULT 0",
-            "wait_max_minutes": "ALTER TABLE monitor_profiles ADD COLUMN wait_max_minutes INTEGER DEFAULT 10",
-        }
-        added_behavior = False
-        for col, sql in profile_migrations.items():
-            if profile_cols and col not in profile_cols:
-                conn.exec_driver_sql(sql)
-                logger.info("Migrated monitor_profiles.%s", col)
-                added_behavior = True
-        if added_behavior:
-            conn.exec_driver_sql(
-                "UPDATE monitor_profiles SET rule_celular=1, phone_max_minutes=8 "
-                "WHERE environment_type='escritorio'"
+        if url.startswith("sqlite"):
+            if cam_cols and "profile_id" not in cam_cols:
+                conn.exec_driver_sql(
+                    "ALTER TABLE cameras ADD COLUMN profile_id INTEGER REFERENCES monitor_profiles(id)"
+                )
+                logger.info("Migrated cameras.profile_id")
+
+            alert_cols = _column_names(conn, "alerts")
+            migrations = {
+                "feedback_comment": "ALTER TABLE alerts ADD COLUMN feedback_comment TEXT",
+                "favorited": "ALTER TABLE alerts ADD COLUMN favorited BOOLEAN DEFAULT 0",
+                "favorite_path": "ALTER TABLE alerts ADD COLUMN favorite_path VARCHAR(255)",
+                "favorited_at": "ALTER TABLE alerts ADD COLUMN favorited_at DATETIME",
+            }
+            for col, sql in migrations.items():
+                if alert_cols and col not in alert_cols:
+                    conn.exec_driver_sql(sql)
+                    logger.info("Migrated alerts.%s", col)
+
+            profile_cols = _column_names(conn, "monitor_profiles")
+            profile_migrations = {
+                "rule_celular": "ALTER TABLE monitor_profiles ADD COLUMN rule_celular BOOLEAN DEFAULT 0",
+                "phone_max_minutes": "ALTER TABLE monitor_profiles ADD COLUMN phone_max_minutes INTEGER DEFAULT 5",
+                "rule_tempo_espera": "ALTER TABLE monitor_profiles ADD COLUMN rule_tempo_espera BOOLEAN DEFAULT 0",
+                "wait_max_minutes": "ALTER TABLE monitor_profiles ADD COLUMN wait_max_minutes INTEGER DEFAULT 10",
+            }
+            added_behavior = False
+            for col, sql in profile_migrations.items():
+                if profile_cols and col not in profile_cols:
+                    conn.exec_driver_sql(sql)
+                    logger.info("Migrated monitor_profiles.%s", col)
+                    added_behavior = True
+            if added_behavior:
+                conn.exec_driver_sql(
+                    "UPDATE monitor_profiles SET rule_celular=1, phone_max_minutes=8 "
+                    "WHERE environment_type='escritorio'"
+                )
+                conn.exec_driver_sql(
+                    "UPDATE monitor_profiles SET rule_tempo_espera=1, wait_max_minutes=10 "
+                    "WHERE environment_type='recepcao'"
+                )
+                conn.exec_driver_sql(
+                    "UPDATE monitor_profiles SET rule_tempo_espera=1, wait_max_minutes=8 "
+                    "WHERE environment_type='corredor'"
+                )
+
+
+def _ensure_default_store(db) -> None:
+    """Cria loja padrão e vincula câmeras sem store_id."""
+    store = db.query(Store).order_by(Store.id.asc()).first()
+    if not store:
+        store = Store(name="Loja principal", cnpj=None, is_active=True)
+        db.add(store)
+        db.flush()
+        for item in default_hours_payload():
+            store.hours.append(
+                StoreHour(
+                    weekday=item["weekday"],
+                    opens_at=item["opens_at"],
+                    closes_at=item["closes_at"],
+                    is_closed=item["is_closed"],
+                )
             )
-            conn.exec_driver_sql(
-                "UPDATE monitor_profiles SET rule_tempo_espera=1, wait_max_minutes=10 "
-                "WHERE environment_type='recepcao'"
-            )
-            conn.exec_driver_sql(
-                "UPDATE monitor_profiles SET rule_tempo_espera=1, wait_max_minutes=8 "
-                "WHERE environment_type='corredor'"
-            )
+        db.commit()
+        logger.info("Default store created: %s", store.name)
+
+    from app.models import Camera
+
+    orphan = db.query(Camera).filter(Camera.store_id.is_(None)).all()
+    if orphan:
+        for cam in orphan:
+            cam.store_id = store.id
+        db.commit()
+        logger.info("Backfilled store_id on %s camera(s)", len(orphan))
 
 
 def seed_db() -> None:
@@ -138,13 +234,18 @@ def seed_db() -> None:
             user = User(
                 username=settings.admin_username,
                 password_hash=hash_password(settings.admin_password),
+                role=ROLE_ADMIN,
                 is_active=True,
             )
             db.add(user)
             db.commit()
             logger.info("Admin user created: %s", settings.admin_username)
+        elif not getattr(user, "role", None):
+            user.role = ROLE_ADMIN
+            db.commit()
         get_or_create_settings(db)
         ensure_default_profiles(db)
+        _ensure_default_store(db)
     finally:
         db.close()
 
@@ -172,6 +273,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(settings_api.router)
 app.include_router(profiles.router)
+app.include_router(stores.router)
+app.include_router(users.router)
 app.include_router(cameras.router)
 app.include_router(alerts.router)
 app.include_router(reports.router)

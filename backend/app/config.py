@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     auth_rate_limit_max: int = 10
     # Imagens de alerta (não favoritas) expiram após N horas
     snapshot_retention_hours: int = 24
+    # Fuso para horário de funcionamento das lojas
+    app_timezone: str = "America/Sao_Paulo"
 
     @property
     def cors_origin_list(self) -> List[str]:

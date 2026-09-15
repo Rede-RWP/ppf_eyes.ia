@@ -8,21 +8,21 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import ReportChatMessage, User
 from app.schemas import ParameterItem, ReportChatIn, ReportChatMessageOut, ReportChatOut
-from app.security import get_current_user
+from app.permissions import require_roles
 from app.services.reports_service import PARAMETERS_CATALOG, ask_reports_ai
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
 @router.get("/parameters", response_model=List[ParameterItem])
-def list_parameters(_: User = Depends(get_current_user)):
+def list_parameters(_: User = Depends(require_roles("admin", "gestor"))):
     return PARAMETERS_CATALOG
 
 
 @router.get("/chat", response_model=List[ReportChatMessageOut])
 def chat_history(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor")),
 ):
     rows = (
         db.query(ReportChatMessage)
@@ -36,7 +36,7 @@ def chat_history(
 @router.delete("/chat")
 def clear_chat(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor")),
 ):
     db.query(ReportChatMessage).delete()
     db.commit()
@@ -47,7 +47,7 @@ def clear_chat(
 def chat(
     payload: ReportChatIn,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor")),
 ):
     msg = payload.message.strip()
     if not msg:

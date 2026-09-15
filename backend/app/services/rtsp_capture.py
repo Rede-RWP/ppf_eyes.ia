@@ -10,6 +10,7 @@ from typing import Optional, Tuple
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import cv2
+import numpy as np
 
 from app.config import get_settings
 
@@ -51,7 +52,7 @@ def normalize_rtsp_url(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
 
 
-def _capture_with_opencv(rtsp_url: str, timeout_sec: float) -> Tuple[bool, str, Optional[bytes]]:
+def _capture_bgr_opencv(rtsp_url: str, timeout_sec: float):
     cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
     if not cap.isOpened():
         return False, "OpenCV não abriu o stream", None
@@ -69,11 +70,14 @@ def _capture_with_opencv(rtsp_url: str, timeout_sec: float) -> Tuple[bool, str, 
 
     if not ok or frame is None:
         return False, "Timeout ao ler frame (OpenCV)", None
+    return True, "Frame capturado", frame
 
-    ok_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+
+def _bgr_to_jpeg(frame, quality: int = 85) -> Optional[bytes]:
+    ok_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
     if not ok_enc:
-        return False, "Falha ao codificar JPEG", None
-    return True, "Frame capturado", buf.tobytes()
+        return None
+    return buf.tobytes()
 
 
 def _capture_with_ffmpeg(rtsp_url: str, timeout_sec: float = 15.0) -> Tuple[bool, str, Optional[bytes]]:
@@ -101,7 +105,6 @@ def _capture_with_ffmpeg(rtsp_url: str, timeout_sec: float = 15.0) -> Tuple[bool
         path = Path(out_path)
         if proc.returncode != 0 or not path.exists() or path.stat().st_size < 100:
             err = (proc.stderr or proc.stdout or "ffmpeg falhou").strip()
-            # Keep message short for UI
             err = re.sub(r"\s+", " ", err)[:280]
             return False, f"ffmpeg: {err or 'não gerou frame'}", None
         return True, "Frame capturado (ffmpeg)", path.read_bytes()
@@ -132,20 +135,32 @@ def _hint_for_url(url: str, error: str) -> str:
     return error
 
 
+def capture_frame_bgr(
+    rtsp_url: str, timeout_sec: float = 12.0
+) -> Tuple[bool, str, Optional[object], Optional[bytes]]:
+    """Captura frame BGR (numpy) + JPEG. Usado para movimento + IA."""
+    normalized = normalize_rtsp_url(rtsp_url)
+    ok, message, frame = _capture_bgr_opencv(normalized, timeout_sec)
+    if ok and frame is not None:
+        jpeg = _bgr_to_jpeg(frame)
+        if jpeg:
+            return True, message, frame, jpeg
+
+    ok2, message2, data2 = _capture_with_ffmpeg(
+        normalized, timeout_sec=max(timeout_sec, 15.0)
+    )
+    if ok2 and data2:
+        arr = np.frombuffer(data2, dtype=np.uint8)
+        bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        return True, message2, bgr, data2
+
+    return False, _hint_for_url(rtsp_url, message2 or message), None, None
+
+
 def capture_frame(rtsp_url: str, timeout_sec: float = 12.0) -> Tuple[bool, str, Optional[bytes]]:
     """Grab a single JPEG frame from an RTSP stream."""
-    normalized = normalize_rtsp_url(rtsp_url)
-
-    ok, message, data = _capture_with_opencv(normalized, timeout_sec)
-    if ok and data:
-        return True, message, data
-
-    ok2, message2, data2 = _capture_with_ffmpeg(normalized, timeout_sec=max(timeout_sec, 15.0))
-    if ok2 and data2:
-        return True, message2, data2
-
-    combined = message2 or message
-    return False, _hint_for_url(rtsp_url, combined), None
+    ok, message, _bgr, jpeg = capture_frame_bgr(rtsp_url, timeout_sec)
+    return ok, message, jpeg
 
 
 def save_jpeg(data: bytes, filename: str) -> str:

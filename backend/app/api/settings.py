@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import User
 from app.schemas import SettingsOut, SettingsUpdate
-from app.security import decrypt_secret, encrypt_secret, get_current_user
+from app.permissions import require_roles
+from app.security import decrypt_secret, encrypt_secret
 from app.services.alert_service import get_or_create_settings
 from app.services.ai_router import analyze_frame, resolve_api_key
 
@@ -50,6 +51,13 @@ def _to_out(row) -> SettingsOut:
         analysis_interval_sec=row.analysis_interval_sec,
         cooldown_minutes=row.cooldown_minutes,
         confidence_threshold=row.confidence_threshold,
+        respect_store_hours=bool(getattr(row, "respect_store_hours", True)),
+        motion_enabled=bool(getattr(row, "motion_enabled", True)),
+        motion_check_interval_sec=int(getattr(row, "motion_check_interval_sec", 8) or 8),
+        motion_sensitivity=float(getattr(row, "motion_sensitivity", 0.02) or 0.02),
+        motion_pixel_threshold=int(getattr(row, "motion_pixel_threshold", 25) or 25),
+        motion_cooldown_sec=int(getattr(row, "motion_cooldown_sec", 45) or 45),
+        ai_heartbeat_sec=int(getattr(row, "ai_heartbeat_sec", 300) or 0),
         rule_sem_touca=row.rule_sem_touca,
         rule_fardamento=row.rule_fardamento,
         rule_sem_epi=row.rule_sem_epi,
@@ -64,7 +72,7 @@ def _to_out(row) -> SettingsOut:
 @router.get("", response_model=SettingsOut)
 def get_settings_api(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin")),
 ):
     return _to_out(get_or_create_settings(db))
 
@@ -73,7 +81,7 @@ def get_settings_api(
 def update_settings(
     payload: SettingsUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin")),
 ):
     row = get_or_create_settings(db)
     data = payload.model_dump(exclude_unset=True)
@@ -109,7 +117,7 @@ def update_settings(
 @router.post("/test-ai")
 def test_ai_connection(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin")),
 ):
     row = get_or_create_settings(db)
     provider = (row.active_provider or "openai").lower()

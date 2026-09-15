@@ -83,15 +83,54 @@ export async function logout() {
   }
 }
 
-export async function fetchMe(): Promise<{ id: number; username: string } | null> {
+export async function fetchMe(): Promise<Me | null> {
   try {
-    const me = await api<{ id: number; username: string }>('/api/auth/me')
+    const me = await api<Me>('/api/auth/me')
     markAuthed()
     return me
   } catch {
     clearAuth()
     return null
   }
+}
+
+export type Me = {
+  id: number
+  username: string
+  role: 'admin' | 'gestor' | 'operador' | string
+  display_name?: string | null
+  store_ids: number[]
+  is_active: boolean
+}
+
+export type StoreHour = {
+  weekday: number
+  label: string
+  opens_at?: string | null
+  closes_at?: string | null
+  is_closed: boolean
+}
+
+export type Store = {
+  id: number
+  name: string
+  cnpj?: string | null
+  is_active: boolean
+  hours: StoreHour[]
+  cameras_count: number
+  created_at: string
+  updated_at: string
+}
+
+export type AppUser = {
+  id: number
+  username: string
+  role: string
+  display_name?: string | null
+  store_ids: number[]
+  store_names: string[]
+  is_active: boolean
+  created_at: string
 }
 
 export type Settings = {
@@ -102,6 +141,13 @@ export type Settings = {
   analysis_interval_sec: number
   cooldown_minutes: number
   confidence_threshold: number
+  respect_store_hours?: boolean
+  motion_enabled?: boolean
+  motion_check_interval_sec?: number
+  motion_sensitivity?: number
+  motion_pixel_threshold?: number
+  motion_cooldown_sec?: number
+  ai_heartbeat_sec?: number
   rule_sem_touca: boolean
   rule_fardamento: boolean
   rule_sem_epi: boolean
@@ -116,6 +162,8 @@ export type Camera = {
   name: string
   rtsp_url_masked: string
   location?: string | null
+  store_id?: number | null
+  store_name?: string | null
   profile_id?: number | null
   profile_name?: string | null
   enabled: boolean
