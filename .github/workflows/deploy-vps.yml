@@ -1,9 +1,9 @@
 name: Deploy VPS
 
+# Só roda quando você clicar em "Run workflow" (não em todo push).
+# Configure os secrets antes: VPS_HOST, VPS_USER, VPS_SSH_KEY (e opcional VPS_PORT).
 on:
-  push:
-    branches: [main]
-  workflow_dispatch: # botão "Run workflow" manual no GitHub
+  workflow_dispatch:
 
 concurrency:
   group: deploy-vps
